@@ -32,30 +32,44 @@ function etTodayISO() {
 }
 
 async function fetchPage(page) {
-  const res = await fetch(API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json;api-version=3.0-preview.1',
-      'User-Agent': 'extstats-sync',
-    },
-    body: JSON.stringify({
-      filters: [
-        {
-          criteria: [{ filterType: 8, value: 'Microsoft.VisualStudio.Code' }],
-          pageNumber: page,
-          pageSize: PAGE_SIZE,
-          sortBy: 4, // installCount 降序(实测)
-          sortOrder: 0,
+  // marketplace 接口对连续快请求会 400/429:重试退避 + 页间温和限速(CI 网快更容易触发)
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json;api-version=3.0-preview.1',
+          'User-Agent': 'extstats-sync',
         },
-      ],
-      flags: 950,
-    }),
-    signal: AbortSignal.timeout(60_000),
-  })
-  if (!res.ok) throw new Error(`page ${page}: HTTP ${res.status}`)
-  const j = await res.json()
-  return j.results?.[0]?.extensions ?? []
+        body: JSON.stringify({
+          filters: [
+            {
+              criteria: [{ filterType: 8, value: 'Microsoft.VisualStudio.Code' }],
+              pageNumber: page,
+              pageSize: PAGE_SIZE,
+              sortBy: 4, // installCount 降序(实测)
+              sortOrder: 0,
+            },
+          ],
+          flags: 950,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      })
+      if (res.ok) return (await res.json()).results?.[0]?.extensions ?? []
+      if (res.status === 400 || res.status === 429) {
+        const wait = attempt * 8_000
+        console.log(`[sync-mp] page ${page}: HTTP ${res.status}, retry in ${wait / 1000}s (attempt ${attempt})`)
+        await new Promise((r) => setTimeout(r, wait))
+        continue
+      }
+      throw new Error(`page ${page}: HTTP ${res.status}`)
+    } catch (err) {
+      if (attempt === 4) throw err
+      await new Promise((r) => setTimeout(r, 8_000))
+    }
+  }
+  throw new Error(`page ${page}: exhausted retries`)
 }
 
 function normalize(e) {
@@ -95,7 +109,7 @@ async function main() {
     if (items.length === 0) break
     collected.push(...items.map(normalize))
     console.log(`[sync-mp] page ${p}/${pages}: +${items.length} (total ${collected.length})`)
-    await new Promise((r) => setTimeout(r, 400)) // 温和限速
+    await new Promise((r) => setTimeout(r, 1500)) // 温和限速:连续快请求会被 400
   }
 
   const seen = new Set()
