@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+/* 站点皮肤:开发者工具青(Teal)基调(与 WageStats 蓝、NutriStats 橙、AnswerToday 绿区分) */
+:root {
+  --background: #f6fbfa;
+  --foreground: #0f2622;
+  --brand: #0d7d72;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-ink: var(--foreground);
+  --color-brand: var(--brand);
+  --font-sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}

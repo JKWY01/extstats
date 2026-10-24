@@ -1,0 +1,88 @@
+name: Marketplace sync
+
+# 每日同步:安装量逐日快照(独家时序数据,日更才有意义)+ 线上体检。
+# 数据变化即提交(时序每天必有新点);失败自动开 issue。
+on:
+  schedule:
+    - cron: '20 6 * * *' # 每日 06:20 UTC:同步(ET 午夜翻篇后)
+    - cron: '40 9 * * *' # 每日 09:40 UTC:线上体检
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: site-ops
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '20 6 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Sync marketplace data
+        run: node scripts/sync-marketplace.mjs
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "JKWY01"
+          git config user.email "71512658+JKWY01@users.noreply.github.com"
+          git add data/marketplace.json
+          if git diff --cached --quiet; then
+            echo "no data change, nothing to push"
+            exit 0
+          fi
+          git commit -m "sync: marketplace snapshot [skip ci]"
+          git push
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN=$(gh issue list --search "🚨 in:title" --state open --json number --jq length)
+          if [ "${OPEN:-0}" = "0" ]; then
+            gh issue create \
+              --title "🚨 marketplace sync failed — $(date -u '+%F %T') UTC" \
+              --body "自动告警:Marketplace 数据同步失败,站点放养中需要人工查看。
+          运行记录:${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          修复后请关闭本 issue。" || echo "issue create failed (non-fatal)"
+          else
+            echo "alert issue already open, skip duplicate"
+          fi
+
+  healthcheck:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '40 9 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Health check live site
+        run: node scripts/healthcheck.mjs
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN=$(gh issue list --search "🚨 in:title" --state open --json number --jq length)
+          if [ "${OPEN:-0}" = "0" ]; then
+            gh issue create \
+              --title "🚨 healthcheck failed — $(date -u '+%F %T') UTC" \
+              --body "自动告警:线上体检未通过,站点放养中需要人工查看。
+          运行记录:${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          修复后请关闭本 issue。" || echo "issue create failed (non-fatal)"
+          else
+            echo "alert issue already open, skip duplicate"
+          fi
