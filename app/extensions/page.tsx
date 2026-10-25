@@ -4,6 +4,7 @@ import AdSlot from '@/components/AdSlot'
 import { breadcrumbLd } from '@/lib/jsonld'
 import { BASE, bigNum } from '@/lib/site'
 import { allExts } from '@/lib/mp'
+import FilterBox from '@/components/FilterBox'
 
 /** 全量目录:前 2000 按安装量降序一张表(站内最大内链枢纽)。 */
 export const revalidate = 86400
@@ -36,8 +37,9 @@ export default function ExtensionsPage() {
 
       <AdSlot slot="extensions-top" />
 
-      <div className="mt-6 overflow-x-auto rounded-xl border border-ink/10 bg-white">
-        <table className="w-full text-[13.5px]">
+      <FilterBox targetId="ext-table" placeholder="Filter 2,000 extensions…" />
+      <div id="ext-table" className="mt-6 overflow-x-auto rounded-xl border border-ink/10 bg-white">
+        <table className="w-full text-[13.5px] sticky-head">
           <thead>
             <tr className="border-b border-ink/10 text-left text-[12px] uppercase tracking-wider text-ink/45">
               <th className="px-4 py-2.5">#</th>
